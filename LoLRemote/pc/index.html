@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1428">
+<title>LoL 리모컨</title>
+<style>
+:root{--bg:#0a1428;--panel:#1e2328;--gold:#c8aa6e;--line:#785a28;--text:#f0e6d2;--red:#e84057}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;
+  padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 60px)}
+#app{max-width:520px;margin:auto;padding:12px}
+#st{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;
+  justify-content:space-between;gap:8px;font-size:14px}
+#st b{color:var(--gold)}
+nav{display:flex;gap:6px;margin:12px 0}
+nav button{flex:1;padding:10px 0}
+button,select,input{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;padding:12px;width:100%}
+button{cursor:pointer}
+button.on,button.main{background:var(--gold);color:var(--bg);font-weight:700}
+button.danger{border-color:var(--red);color:var(--red)}
+button:disabled{opacity:.35;cursor:default}
+button.small{padding:6px 10px;width:auto;font-size:13px}
+.row{display:flex;gap:8px;margin:6px 0}
+.row>*{flex:1;min-width:0}
+.sec{display:none}.sec.on{display:block}
+h2{font-size:13px;color:var(--gold);margin:16px 0 6px;font-weight:600}
+.hint{font-size:13px;opacity:.8;line-height:1.5;margin:6px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:6px;margin:6px 0}
+.cell{position:relative;padding:3px;text-align:center;font-size:11px;border:2px solid transparent;
+  border-radius:8px;background:var(--panel);cursor:pointer;line-height:1.2;overflow:hidden}
+.cell img{width:100%;aspect-ratio:1;border-radius:6px;display:block;background:#0006}
+.cell.sel{border-color:var(--gold)}
+.cell .badge{position:absolute;top:3px;right:3px;background:var(--gold);color:var(--bg);border-radius:4px;
+  font-size:11px;padding:0 5px;font-weight:700}
+.item{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;padding:6px 8px;margin:6px 0;font-size:14px}
+.item.active{border-color:var(--gold)}
+.item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dock{position:sticky;bottom:0;display:flex;gap:8px;padding:8px 0;background:linear-gradient(transparent,var(--bg) 30%)}
+.dock>*{flex:1}
+#msg{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));padding:10px 12px;
+  border-radius:8px;color:#fff;display:none;font-size:14px;z-index:10}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="st">연결 중…</div>
+  <nav>
+    <button data-t="q" class="on">큐</button>
+    <button data-t="c">챔프</button>
+    <button data-t="s">스펠</button>
+    <button data-t="r">룬</button>
+  </nav>
+
+  <!-- ===== 큐 ===== -->
+  <section id="t-q" class="sec on">
+    <h2>로비</h2>
+    <!-- 큐 ID는 패치로 바뀔 수 있어요. 필요하면 여기서 추가/수정하세요. -->
+    <select id="queue">
+      <option value="420">솔로/듀오 랭크</option>
+      <option value="440">자유 랭크</option>
+      <option value="400">일반 (드래프트)</option>
+      <option value="490">빠른 대전</option>
+      <option value="480">스웜</option>
+      <option value="450">칼바람 나락</option>
+      <option value="1700">아레나</option>
+    </select>
+    <div class="row">
+      <button onclick="createLobby()">로비 만들기</button>
+      <button class="danger" onclick="act('POST','/api/lobby/leave')">로비 나가기</button>
+    </div>
+
+    <h2>선호 포지션 (소환사의 협곡)</h2>
+    <div class="row">
+      <select id="p1" onchange="setPos()"></select>
+      <select id="p2" onchange="setPos()"></select>
+    </div>
+
+    <h2>매칭</h2>
+    <button id="bStart" class="main" onclick="act('POST','/api/queue/start')">큐 시작</button>
+    <button id="bCancel" onclick="act('POST','/api/queue/cancel')">큐 취소</button>
+    <div class="row">
+      <button id="bAccept" class="main" onclick="act('POST','/api/accept')">수락</button>
+      <button id="bDecline" class="danger" onclick="act('POST','/api/decline')">거절</button>
+    </div>
+    <button id="bAuto" onclick="act('POST','/api/auto-accept',{enabled:!S.auto_accept})">자동 수락: -</button>
+    <button id="bRepair" style="display:none;margin-top:16px" onclick="LolBridge.rescan()">PC 다시 연결 (QR 스캔)</button>
+  </section>
+
+  <!-- ===== 챔프 ===== -->
+  <section id="t-c" class="sec">
+    <div id="csInfo" class="hint"></div>
+    <div class="row">
+      <button id="kPick" class="on" onclick="setKind('pick')">픽</button>
+      <button id="kBan" onclick="setKind('ban')">밴</button>
+    </div>
+    <input id="search" placeholder="챔피언 검색" oninput="drawChampGrid()" autocomplete="off">
+    <div id="champGrid" class="grid"></div>
+    <div class="dock">
+      <button id="bHover" onclick="selectChamp(false)">선택(호버)</button>
+      <button id="bLock" class="main" onclick="selectChamp(true)">확정</button>
+    </div>
+  </section>
+
+  <!-- ===== 스펠 ===== -->
+  <section id="t-s" class="sec">
+    <div class="hint">주문 2개를 순서대로 누르세요. 먼저 누른 것이 D, 다음이 F입니다. 챔피언 선택 중에만 적용돼요.</div>
+    <div id="spellGrid" class="grid"></div>
+    <div class="row">
+      <button onclick="spellSel.reverse();drawSpells()">D/F 바꾸기</button>
+      <button class="main" onclick="applySpells()">적용</button>
+    </div>
+  </section>
+
+  <!-- ===== 룬 ===== -->
+  <section id="t-r" class="sec">
+    <h2>저장한 프리셋 (이 폰에 저장)</h2>
+    <div id="runePresets"></div>
+    <h2>내 룬 페이지</h2>
+    <div id="runePages"></div>
+
+    <h2>룬 만들기</h2>
+    <div id="runeEditor"></div>
+    <input id="runeName" value="LoL 리모컨" maxlength="25" placeholder="룬 페이지 이름">
+    <div class="row">
+      <button onclick="savePreset()">프리셋 저장</button>
+      <button id="bRune" class="main" onclick="applyRunes()">적용 (0/9)</button>
+    </div>
+  </section>
+</div>
+<div id="msg"></div>
+
+<script>
+const token = new URLSearchParams(location.search).get("token") || "";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const asset = p => "/api/asset?token=" + encodeURIComponent(token) + "&path=" + encodeURIComponent(p);
+const mmss = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
+
+const PHASE = {None:"대기 중", Lobby:"로비", Matchmaking:"큐 대기 중", ReadyCheck:"매치 발견!", ChampSelect:"챔피언 선택",
+  GameStart:"게임 시작 중", InProgress:"게임 중", Reconnect:"재접속 필요", WaitingForStats:"결과 집계 중",
+  PreEndOfGame:"게임 종료", EndOfGame:"게임 종료", TerminatedInError:"오류 종료"};
+const CS_PHASE = {PLANNING:"준비", BAN_PICK:"밴/픽", FINALIZATION:"최종 준비", GAME_STARTING:"게임 시작"};
+const POS = [["TOP","탑"],["JUNGLE","정글"],["MIDDLE","미드"],["BOTTOM","원딜"],["UTILITY","서포터"],["FILL","상관없음"]];
+
+let S = null, tab = "q", prevPhase = null;
+let champs = [], selChamp = null, kind = "pick", kindManual = false, gridKey = "";
+let spells = [], spellSel = [];
+let R = null, pages = [];
+let E = {primary:null, sub:null, keystone:null, rows:[null,null,null], subPicks:[], shards:[null,null,null]};
+
+// ------------------------------------------------------------ 공통
+async function api(method, path, body) {
+  const r = await fetch(path, {method, headers:{"X-Token":token, "Content-Type":"application/json"},
+    body: body === undefined ? undefined : JSON.stringify(body)});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : "오류 " + r.status);
+  return data;
+}
+let toastT;
+function toast(text, ok) {
+  const m = $("msg");
+  m.textContent = text; m.style.background = ok ? "#0a7d5a" : "#e84057"; m.style.display = "block";
+  clearTimeout(toastT); toastT = setTimeout(() => m.style.display = "none", 3500);
+}
+async function act(method, path, body, okText) {
+  try { const r = await api(method, path, body); if (okText) toast(okText, true); refresh(); return r; }
+  catch (e) { toast(e.message); return null; }
+}
+function setSel(el, val) { if (val && [...el.options].some(o => o.value == val) && document.activeElement !== el) el.value = val; }
+
+// ------------------------------------------------------------ 탭
+function show(t) {
+  tab = t;
+  document.querySelectorAll(".sec").forEach(e => e.classList.toggle("on", e.id === "t-" + t));
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  if (t === "c") { if (!champs.length) loadChamps(); gridKey = ""; drawChampGrid(); }
+  if (t === "s" && !spells.length) loadSpells();
+  if (t === "r") loadRunes();
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.t));
+["p1","p2"].forEach(id => { $(id).innerHTML = POS.map(([v,n]) => `<option value="${v}">${n}</option>`).join(""); $(id).value = "FILL"; });
+
+// ------------------------------------------------------------ 상태 갱신
+let busy = false, again = false;
+async function refresh() {
+  if (busy) { again = true; return; }
+  busy = true;
+  try { S = await api("GET", "/api/state"); S.t = Date.now(); render(); }
+  catch (e) { $("st").innerHTML = `<span>${esc(e.message)}</span>`; }
+  busy = false;
+  if (again) { again = false; refresh(); }
+}
+
+function renderStatus() {
+  if (!S) return;
+  const dt = (Date.now() - S.t) / 1000;
+  let extra = "";
+  if (S.phase === "Matchmaking" && S.queue) extra = ` · ${mmss(S.queue.elapsed + dt)} / 예상 ${mmss(S.queue.estimated)}`;
+  if (S.phase === "ChampSelect" && S.cs) extra = ` · ${CS_PHASE[S.cs.phase] || S.cs.phase || ""} ${Math.max(0, Math.round(S.cs.seconds_left - dt))}초`;
+  $("st").innerHTML = `<b>${esc(S.summoner || "?")}</b><span>${esc(PHASE[S.phase] || S.phase)}${esc(extra)}</span>`;
+}
+
+function render() {
+  renderStatus();
+  const ph = S.phase;
+  $("bStart").disabled = ph !== "Lobby" || S.lobby?.can_start === false;
+  $("bCancel").disabled = ph !== "Matchmaking";
+  $("bAccept").disabled = $("bDecline").disabled = ph !== "ReadyCheck";
+  $("bAuto").textContent = "자동 수락: " + (S.auto_accept ? "켜짐" : "꺼짐");
+  $("bAuto").classList.toggle("on", S.auto_accept);
+  if (S.lobby) {
+    setSel($("queue"), S.lobby.queue_id); setSel($("p1"), S.lobby.first); setSel($("p2"), S.lobby.second);
+  }
+  if (ph !== prevPhase) {
+    if (ph === "ReadyCheck") { show("q"); navigator.vibrate?.([200, 100, 200]); }
+    if (ph === "ChampSelect") { show("c"); kindManual = false; }
+    if (prevPhase === "ChampSelect") { selChamp = null; spellSel = []; drawSpells(); }
+    prevPhase = ph;
+  }
+  renderChamp();
+  if (tab === "r") loadPages();
+}
+setInterval(renderStatus, 1000);
+
+// ------------------------------------------------------------ 큐
+function createLobby() { act("POST", "/api/lobby", {queue_id: +$("queue").value}); }
+function setPos() { act("POST", "/api/lobby/positions", {first: $("p1").value, second: $("p2").value}); }
+
+// ------------------------------------------------------------ 챔프
+async function loadChamps() {
+  try { champs = await api("GET", "/api/champions"); gridKey = ""; renderChamp(); }
+  catch (e) { toast(e.message); }
+}
+function setKind(k) { kind = k; kindManual = true; gridKey = ""; renderChamp(); }
+function champName(id) { return (champs.find(c => c.id === id) || {}).name; }
+
+function visibleChamps() {
+  const q = $("search").value.trim().toLowerCase(), cs = S?.cs;
+  let list = champs;
+  if (kind === "pick") {
+    const ids = cs?.pickable;
+    list = ids && ids.length ? champs.filter(c => ids.includes(c.id)) : champs.filter(c => c.owned);
+  } else {
+    const ids = cs?.bannable;
+    if (ids && ids.length) list = champs.filter(c => ids.includes(c.id));
+  }
+  if (q) list = list.filter(c => c.name.toLowerCase().includes(q) || c.alias.toLowerCase().includes(q));
+  return list;
+}
+
+function drawChampGrid() {
+  if (tab !== "c") return;
+  const list = visibleChamps();
+  const key = kind + "|" + $("search").value + "|" + selChamp + "|" + list.map(c => c.id).join(",");
+  if (key === gridKey) return;
+  gridKey = key;
+  $("champGrid").innerHTML = list.map(c =>
+    `<div class="cell ${c.id === selChamp ? "sel" : ""}" onclick="pickChamp(${c.id})">
+       <img loading="lazy" alt="" src="${asset(c.icon)}"><div>${esc(c.name)}</div></div>`).join("")
+    || '<div class="hint">표시할 챔피언이 없어요.</div>';
+}
+function pickChamp(id) { selChamp = id; gridKey = ""; renderChamp(); }
+
+function renderChamp() {
+  if (!S) return;
+  const cs = S.cs;
+  if (cs && !kindManual) kind = (cs.ban && cs.ban.in_progress) ? "ban" : "pick";
+  $("kPick").classList.toggle("on", kind === "pick");
+  $("kBan").classList.toggle("on", kind === "ban");
+  const label = kind === "ban" ? "밴" : "픽";
+  let t;
+  if (!cs) t = "챔피언 선택 단계가 아니에요.";
+  else {
+    const a = cs[kind];
+    const me = cs.my_champion ? (champName(cs.my_champion) || "#" + cs.my_champion) : "없음";
+    t = `내 챔피언: ${esc(me)}${cs.position ? ` (${esc(cs.position)})` : ""}<br>` +
+      (a ? (a.in_progress ? `<b>지금 ${label} 차례입니다</b>` : `${label} 차례 대기 중`)
+         : `지금 할 수 있는 ${label} 행동이 없어요`);
+  }
+  if (selChamp) t += `<br>선택한 챔피언: ${esc(champName(selChamp) || selChamp)}`;
+  $("csInfo").innerHTML = t;
+  const a = cs && cs[kind];
+  $("bHover").disabled = !a || (kind === "ban" && !a.in_progress);
+  $("bLock").disabled = !a || !a.in_progress;
+  $("bLock").textContent = label + " 확정";
+  if (cs && !spellSel.length && cs.spell1 && cs.spell2) { spellSel = [cs.spell1, cs.spell2]; drawSpells(); }
+  drawChampGrid();
+}
+
+function selectChamp(lock) {
+  if (!selChamp) return toast("챔피언을 먼저 선택하세요.");
+  act("POST", "/api/champselect/select", {kind, champion_id: selChamp, lock},
+      lock ? (kind === "ban" ? "밴 확정!" : "픽 확정!") : null);
+}
+
+// ------------------------------------------------------------ 스펠
+async function loadSpells() {
+  try { spells = await api("GET", "/api/spells"); drawSpells(); }
+  catch (e) { toast(e.message); }
+}
+function drawSpells() {
+  $("spellGrid").innerHTML = spells.map(s => {
+    const i = spellSel.indexOf(s.id);
+    return `<div class="cell ${i >= 0 ? "sel" : ""}" onclick="togSpell(${s.id})">
+      ${i >= 0 ? `<span class="badge">${i ? "F" : "D"}</span>` : ""}
+      ${s.icon ? `<img loading="lazy" alt="" src="${asset(s.icon)}">` : ""}<div>${esc(s.name)}</div></div>`;
+  }).join("");
+}
+function togSpell(id) {
+  const i = spellSel.indexOf(id);
+  if (i >= 0) spellSel.splice(i, 1);
+  else { if (spellSel.length >= 2) spellSel.shift(); spellSel.push(id); }
+  drawSpells();
+}
+function applySpells() {
+  if (spellSel.length < 2) return toast("주문 2개를 골라 주세요.");
+  act("POST", "/api/spells", {spell1: spellSel[0], spell2: spellSel[1]}, "주문을 적용했어요");
+}
+
+// ------------------------------------------------------------ 룬
+async function loadRunes() {
+  try { if (!R) R = await api("GET", "/api/runes/data"); await loadPages(); drawRunes(); drawPresets(); }
+  catch (e) { toast(e.message); }
+}
+async function loadPages() {
+  try { pages = await api("GET", "/api/runes/pages"); drawPages(); } catch (e) { /* 상태 표시줄에서 확인 */ }
+}
+const style = id => R.styles.find(s => s.id === id);
+
+function perkCell(id, sel, click) {
+  const p = R.perks[id] || {};
+  return `<div class="cell ${sel ? "sel" : ""}" onclick="${click}" title="${esc(p.name)}">
+    <img loading="lazy" alt="" src="${p.icon ? asset(p.icon) : ""}"><div>${esc(p.name || id)}</div></div>`;
+}
+function styleCell(s, sel, click) {
+  return `<div class="cell ${sel ? "sel" : ""}" onclick="${click}"><img loading="lazy" alt="" src="${asset(s.icon)}"><div>${esc(s.name)}</div></div>`;
+}
+const grid = html => `<div class="grid">${html}</div>`;
+
+function buildPerks() {
+  const sub = E.subPicks.slice().sort((a, b) => a.row - b.row).map(p => p.id);
+  return [E.keystone, ...E.rows, ...sub, ...E.shards];
+}
+
+function drawRunes() {
+  if (!R) return;
+  const pri = style(E.primary), sub = style(E.sub);
+  let h = `<h2>메인 룬 계열</h2>` + grid(R.styles.map(s => styleCell(s, s.id === E.primary, `setPrimary(${s.id})`)).join(""));
+  if (pri) {
+    h += `<h2>핵심 룬</h2>` + grid(pri.keystones.map(id => perkCell(id, E.keystone === id, `E.keystone=${id};drawRunes()`)).join(""));
+    pri.rows.forEach((row, i) => {
+      h += `<h2>메인 ${i + 1}행</h2>` + grid(row.map(id => perkCell(id, E.rows[i] === id, `E.rows[${i}]=${id};drawRunes()`)).join(""));
+    });
+  }
+  h += `<h2>보조 룬 계열</h2>` + grid(R.styles.filter(s => s.id !== E.primary).map(s => styleCell(s, s.id === E.sub, `setSub(${s.id})`)).join(""));
+  if (sub) {
+    sub.rows.forEach((row, i) => {
+      h += `<h2>보조 ${i + 1}행 (두 행에서 하나씩)</h2>` + grid(row.map(id => perkCell(id, E.subPicks.some(p => p.id === id), `setSubPick(${i},${id})`)).join(""));
+    });
+  }
+  h += `<h2>능력치 파편</h2>`;
+  R.shards.forEach((row, i) => { h += grid(row.map(id => perkCell(id, E.shards[i] === id, `E.shards[${i}]=${id};drawRunes()`)).join("")); });
+  $("runeEditor").innerHTML = h;
+  $("bRune").textContent = `적용 (${buildPerks().filter(Boolean).length}/9)`;
+}
+function setPrimary(id) {
+  if (E.primary !== id) {
+    E.primary = id; E.keystone = null; E.rows = [null, null, null];
+    if (E.sub === id) { E.sub = null; E.subPicks = []; }
+  }
+  drawRunes();
+}
+function setSub(id) { if (E.sub !== id) { E.sub = id; E.subPicks = []; } drawRunes(); }
+function setSubPick(row, id) {
+  const k = E.subPicks.findIndex(p => p.row === row);
+  if (k >= 0) { if (E.subPicks[k].id === id) E.subPicks.splice(k, 1); else E.subPicks[k] = {row, id}; }
+  else { if (E.subPicks.length >= 2) E.subPicks.shift(); E.subPicks.push({row, id}); }
+  drawRunes();
+}
+function loadEditor(primary, sub, perks) {
+  const g = i => perks[i] ?? null, s = R && style(sub);
+  E = {primary, sub, keystone: g(0), rows: [g(1), g(2), g(3)],
+    subPicks: [g(4), g(5)].filter(Boolean).map(id => ({row: s ? s.rows.findIndex(r => r.includes(id)) : -1, id})),
+    shards: [g(6), g(7), g(8)]};
+  drawRunes();
+}
+async function applyRunes(pageId) {
+  const perks = buildPerks();
+  if (!E.primary || !E.sub || perks.length !== 9 || !perks.every(Boolean))
+    return toast(`룬을 모두 선택해 주세요 (${perks.filter(Boolean).length}/9)`);
+  const r = await act("POST", "/api/runes/apply",
+    {name: $("runeName").value || "LoL 리모컨", primary: E.primary, sub: E.sub, perks, page_id: pageId ?? null}, "룬을 적용했어요");
+  if (r) loadPages();
+}
+
+// ----- 내 룬 페이지
+function drawPages() {
+  $("runePages").innerHTML = pages.map(p => `<div class="item ${p.active ? "active" : ""}">
+    <span>${esc(p.name)}${p.active ? " ✓" : ""}</span>
+    <button class="small" onclick="activatePage(${p.id})">사용</button>
+    <button class="small" onclick="loadPage(${p.id})">불러오기</button>
+    ${p.editable ? `<button class="small danger" onclick="overwritePage(${p.id})">덮어쓰기</button>` : ""}</div>`).join("")
+    || '<div class="hint">룬 페이지가 없어요.</div>';
+}
+async function activatePage(id) { if (await act("POST", "/api/runes/activate", {page_id: id}, "룬 페이지를 바꿨어요")) loadPages(); }
+function loadPage(id) {
+  const p = pages.find(x => x.id === id);
+  if (!p || !R) return;
+  $("runeName").value = p.name; loadEditor(p.primary, p.sub, p.perks);
+  $("runeEditor").scrollIntoView({behavior: "smooth"});
+}
+function overwritePage(id) {
+  const p = pages.find(x => x.id === id);
+  if (confirm(`"${p?.name}" 페이지를 지금 편집 중인 룬으로 덮어쓸까요?`)) applyRunes(id);
+}
+
+// ----- 프리셋 (폰 브라우저에 저장)
+function getPresets() { try { return JSON.parse(localStorage.getItem("lolPresets") || "[]"); } catch { return []; } }
+function setPresets(l) { try { localStorage.setItem("lolPresets", JSON.stringify(l)); } catch { toast("프리셋을 저장할 수 없어요."); } }
+function drawPresets() {
+  const l = getPresets();
+  $("runePresets").innerHTML = l.map((p, i) => `<div class="item"><span>${esc(p.name)}</span>
+    <button class="small" onclick="usePreset(${i})">적용</button>
+    <button class="small" onclick="editPreset(${i})">편집</button>
+    <button class="small danger" onclick="delPreset(${i})">삭제</button></div>`).join("")
+    || '<div class="hint">아직 없어요. 아래에서 룬을 고르고 "프리셋 저장"을 누르세요.</div>';
+}
+function savePreset() {
+  const perks = buildPerks();
+  if (!E.primary || !E.sub || perks.length !== 9 || !perks.every(Boolean)) return toast("룬을 모두 선택한 뒤 저장하세요.");
+  const name = prompt("프리셋 이름", $("runeName").value);
+  if (!name) return;
+  const l = getPresets().filter(p => p.name !== name);
+  l.push({name, primary: E.primary, sub: E.sub, perks});
+  setPresets(l); drawPresets();
+}
+function editPreset(i) { const p = getPresets()[i]; $("runeName").value = p.name; loadEditor(p.primary, p.sub, p.perks); }
+function usePreset(i) { editPreset(i); applyRunes(); }
+function delPreset(i) { const l = getPresets(); if (confirm(`"${l[i].name}" 프리셋을 삭제할까요?`)) { l.splice(i, 1); setPresets(l); drawPresets(); } }
+
+// ------------------------------------------------------------ 시작
+function connect() {
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws?token=" + encodeURIComponent(token));
+  ws.onmessage = () => refresh();
+  ws.onclose = () => setTimeout(connect, 2000);
+}
+if (window.LolBridge) $("bRepair").style.display = "block";
+if (!token) $("st").textContent = "주소에 ?token=… 이 필요해요. 에이전트가 출력한 주소로 접속하세요.";
+else { connect(); refresh(); setInterval(refresh, 5000); document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); }); }
+</script>
+</body>
+</html>

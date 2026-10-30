@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{margin:0;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px;
+    background:#0a1428;color:#f0e6d2;font-family:sans-serif;box-sizing:border-box}
+  h2{color:#c8aa6e;margin:0 0 8px}
+  p{opacity:.85;line-height:1.6;margin:0 0 24px}
+  button{font:inherit;color:#f0e6d2;background:#1e2328;border:1px solid #785a28;border-radius:10px;
+    padding:14px;width:100%;margin:6px 0}
+  button.main{background:#c8aa6e;color:#0a1428;font-weight:700}
+</style></head><body>
+<h2 id="t"></h2>
+<p id="d"></p>
+<button id="retry" class="main" onclick="LolBridge.retry()">다시 시도</button>
+<button id="scan" onclick="LolBridge.rescan()">QR 스캔해서 PC 연결</button>
+<script>
+  const paired = LolBridge.isPaired();
+  if (paired) {
+    t.textContent = "PC에 연결할 수 없어요";
+    d.textContent = "PC에서 LoL 리모컨이 실행 중인지, 폰과 PC가 같은 와이파이인지 확인해 주세요.";
+  } else {
+    t.textContent = "PC와 연결해 주세요";
+    d.textContent = "PC의 LoL 리모컨 트레이 아이콘에서 'QR 보기'를 누른 뒤, 아래 버튼으로 QR을 스캔하세요.";
+    retry.style.display = "none";
+    scan.className = "main";
+  }
+</script>
+</body></html>
